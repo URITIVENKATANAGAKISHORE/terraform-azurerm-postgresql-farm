@@ -1,0 +1,71 @@
+name: Terraform Plan
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    
+    
+env:
+  WORKING_DIR         : 'running' # This will be the working directory where terraform will be initialized and plan file will be created against Terraform files
+  ARM_CLIENT_ID       : ${{ secrets.ARM_CLIENT_ID }} 
+  ARM_CLIENT_SECRET   : ${{ secrets.ARM_CLIENT_SECRET }}
+  ARM_SUBSCRIPTION_ID : ${{ secrets.ARM_SUBSCRIPTION_ID }}
+  ARM_TENANT_ID       : ${{ secrets.ARM_TENANT_ID }}
+  TF_VERSION          : 1.3.7
+  VARS_FILE           : 'dev.tfvars'  # We can deploy this azure services with tfvars for specific environments 
+
+jobs:
+  terraform_plan:
+    name: Terraform Plan
+    runs-on: [self-hosted]
+    container: mcr.microsoft.com/azure-cli
+    defaults:
+      run:
+        shell: bash
+        working-directory: ./$${{ env.WORKING_DIR }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@v3
+
+      - name: Set Env values for terraform plan and state files
+        run: |
+          echo "PLAN_FILE=${GITHUB_REF##*/}-dev.tfplan" >> $GITHUB_ENV
+          echo "STATE_FILE=${GITHUB_REF##*/}.terraform.tfstate" >>$GITHUB_ENV
+
+      - name: login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      #- name: Generate Token
+        #uses: 
+
+      - name: terraform install
+        run: |
+          wget ""
+          unzip -q "terraform_${TF_VERSION}_linux_amd64.zip" terraform -d /usr/local/bin
+          rm -f "terraform_${TF_VERSION}_linux_amd64.zip"
+          terraform version
+          
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -check -recursive
+
+      - name: terraform init
+        run: terraform init -backend-config=key=${{ env.STATE_FILE }} -input=false
+
+      - name: terraform plan
+        run: |
+          terraform plan -input=false -out ${{ env.PLAN_FILE }} -var-file ./${{ env.VARS_FILE }}
+
+      - name: terraform validate
+        id: validate
+        run: terraform validate -no-color
+
+      - name: upload
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ env.PLAN_FILE }}
+          path: ./${{ env.WORKING_DIR }}/${{ env.PLAN_FILE }}
